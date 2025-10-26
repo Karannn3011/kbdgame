@@ -26,9 +26,13 @@ const initialState: GameStoreState = {
   currentRaiderId: null,
   stamina: 100,
   staminaTimer: null,
+  raidTimer: 30, // <-- ADD (30 seconds)
+  raidTimerId: null, // <-- ADD
   mustRetreat: false,
   pointsScoredThisRaid: 0,
-  qte: null,
+  hasCrossedBaulkLine: false, // <-- ADD
+  multiKillCount: 0, // <-- ADD
+  activeQTE: null, // <-- UPDATED
 };
 
 // 4. Create the store

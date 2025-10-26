@@ -3,6 +3,12 @@
 import { GameState, QTE, LogEntry } from '../types/game';
 import { Player } from '../types/player';
 
+
+export type QTEContext = 
+  | 'tackle'           // Standard tackle
+  | 'multi_tackle'     // Follow-up for a multi-point raid
+  | 'bonus_tackle'     // Tackle during a bonus attempt
+  | 'retreat_escape';  // Escape while retreating
 // 1. All STATE properties
 export interface GameStoreState {
   // Game Flow State
@@ -25,11 +31,20 @@ export interface GameStoreState {
   currentRaiderId: string | null;
   stamina: number;
   staminaTimer: any;
+  raidTimer: number; // <-- ADD (for 30s clock)
+  raidTimerId: any; // <-- ADD
   mustRetreat: boolean;
   pointsScoredThisRaid: number;
+  hasCrossedBaulkLine: boolean; // <-- ADD
+  multiKillCount: number; // <-- ADD
 
   // QTE State
-  qte: QTE | null;
+  activeQTE: { // <-- REPLACE with this object
+    type: 'mash' | 'timing';
+    context: QTEContext;
+    target?: number;
+    successZone?: number;
+  } | null;
 }
 
 // 2. All ACTION interfaces (Slices)
@@ -51,21 +66,28 @@ export interface PlayerSlice {
 }
 
 export interface RaidSlice {
-  _setRaiderPostRaidPosition: () => void; // <-- ADD THIS
   startPlayerRaid: (raiderId: string) => void;
   startAIRaid: () => void;
+  _aiTick: () => void; // <-- ADD (replaces _simulateAIRaid)
   _startStaminaDrain: () => void;
   _stopStaminaDrain: () => void;
-  handleRaidAction: (action: 'TOUCH' | 'RETREAT', targetId?: string) => void;
+  _startRaidTimer: () => void; // <-- ADD
+  _stopRaidTimer: () => void; // <-- ADD
+  handleRaidAction: (
+    action: 'TOUCH' | 'RETREAT' | 'BONUS', // <-- ADD 'BONUS'
+    targetId?: string
+  ) => void;
   _resolveTouch: (raiderId: string, defenderId: string) => void;
   _resolveTackle: (raiderId: string, defenderId: string) => void;
   _resolveRetreat: (raiderId: string) => void;
-  _triggerQTE: (qteType: QTE) => void;
-  feint: (targetLane: 'top' | 'center' | 'bottom') => void; // <-- ADD THIS
-  _updateRaiderPosition: (targetLane: 'top' | 'center' | 'bottom') => void; // <-- ADD THIS
+  _resolveBonus: (raiderId: string) => void; // <-- ADD
+  _triggerQTE: (qte: GameStoreState['activeQTE']) => void; // <-- UPDATED
   handleQTEOutcome: (success: boolean) => void;
   _handleQTEPlayerSuccess: () => void;
   _handleQTEPlayerFailure: () => void;
+  feint: (direction: 'up' | 'down') => void;
+  _updateRaiderPosition: (targetLane: 'top' | 'center' | 'bottom') => void;
+  _setRaiderPostRaidPosition: () => void;
 }
 
 // 3. Combined Types
