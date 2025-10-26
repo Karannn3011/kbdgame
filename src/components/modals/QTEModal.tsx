@@ -6,33 +6,46 @@ import MashQTE from './MashQTE';
 import TimingQTE from './TimingQTE';
 
 const QTEModal: React.FC = () => {
-  // 1. Subscribe to the qte state and the outcome handler
-  const qte = useGameStore((state) => state.qte);
+  // 1. Subscribe to the CORRECT state variable: activeQTE
+  const activeQTE = useGameStore((state) => state.activeQTE); // <-- FIX HERE
   const handleQTEOutcome = useGameStore((state) => state.handleQTEOutcome);
 
   // If no QTE is active, render nothing
-  if (!qte) {
+  if (!activeQTE) { // <-- FIX HERE
     return null;
   }
 
   const renderQTE = () => {
-    if (qte.type === 'mash') {
+    // Check the type from the activeQTE object
+    if (activeQTE.type === 'mash') { // <-- FIX HERE
       return (
         <MashQTE
-          target={qte.target}
-          timeLimit={3000} // 3 seconds
+          // Pass the target from the activeQTE object
+          target={activeQTE.target ?? 10} // <-- FIX HERE (provide default if needed)
+          timeLimit={3000} 
           onComplete={handleQTEOutcome}
         />
       );
     }
 
-    if (qte.type === 'timing') {
-      // Let's define the success zone. We can make this dynamic later.
-      const successZone = { start: 0.4, end: 0.6 }; // 40% to 60%
+    if (activeQTE.type === 'timing') { // <-- FIX HERE
+      // Define the success zone based on context if needed, or use default
+      const successZoneData = activeQTE.successZone ?? 0.5; // <-- FIX HERE (provide default)
+      const successZone = { 
+          start: Math.max(0, successZoneData - 0.1), // Example: center +/- 0.1
+          end: Math.min(1, successZoneData + 0.1) 
+      }; 
+      
+      // You could adjust speed based on activeQTE.context too
+      let speed = 2;
+      if (activeQTE.context === 'bonus_tackle' || activeQTE.context === 'multi_tackle'){
+          speed = 3; // Make harder QTEs faster
+      }
+
       return (
         <TimingQTE
           successZone={successZone}
-          speed={2} // Adjust speed as needed
+          speed={speed} 
           onComplete={handleQTEOutcome}
         />
       );
