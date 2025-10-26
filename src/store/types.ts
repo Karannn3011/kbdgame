@@ -5,7 +5,8 @@ import { Player } from '../types/player';
 
 
 export type QTEContext = 
-  | 'tackle'           // Standard tackle
+  | 'tackle_score'     // <-- NEW: Offensive timing QTE
+  | 'tackle_escape'    // <-- NEW: Defensive mash QTE
   | 'multi_tackle'     // Follow-up for a multi-point raid
   | 'bonus_tackle'     // Tackle during a bonus attempt
   | 'retreat_escape';  // Escape while retreating
@@ -35,12 +36,12 @@ export interface GameStoreState {
   raidTimerId: any; // <-- ADD
   mustRetreat: boolean;
   pointsScoredThisRaid: number;
-  hasCrossedBaulkLine: boolean; // <-- ADD
   multiKillCount: number; // <-- ADD
 
   // QTE State
   activeQTE: { // <-- REPLACE with this object
     type: 'mash' | 'timing';
+    defenderId?: string | null;
     context: QTEContext;
     target?: number;
     successZone?: number;
@@ -83,8 +84,8 @@ export interface RaidSlice {
   _resolveBonus: (raiderId: string) => void; // <-- ADD
   _triggerQTE: (qte: GameStoreState['activeQTE']) => void; // <-- UPDATED
   handleQTEOutcome: (success: boolean) => void;
-  _handleQTEPlayerSuccess: (context : QTEContext |undefined) => void;
-  _handleQTEPlayerFailure: (context : QTEContext |undefined) => void;
+  _handleQTEPlayerSuccess: (context : QTEContext |undefined, defenderId : string | null | undefined) => void;
+  _handleQTEPlayerFailure: (context : QTEContext |undefined, defenderId : string | null | undefined) => void;
   feint: (direction: 'up' | 'down') => void;
   _updateRaiderPosition: (targetLane: 'top' | 'center' | 'bottom') => void;
   _setRaiderPostRaidPosition: () => void;

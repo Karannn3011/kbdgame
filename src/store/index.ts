@@ -30,7 +30,6 @@ const initialState: GameStoreState = {
   raidTimerId: null, // <-- ADD
   mustRetreat: false,
   pointsScoredThisRaid: 0,
-  hasCrossedBaulkLine: false, // <-- ADD
   multiKillCount: 0, // <-- ADD
   activeQTE: null, // <-- UPDATED
 };

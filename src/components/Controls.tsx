@@ -37,7 +37,6 @@ const Controls: React.FC = () => {
   const feint = useGameStore((state) => state.feint);
 
   // --- These were missing from my last snippet ---
-  const hasCrossedBaulkLine = useGameStore((state) => state.hasCrossedBaulkLine);
   const defenderCount = useGameStore((state) =>
     state.aiTeam.filter((p) => !p.isOut).length
   );
@@ -47,7 +46,7 @@ const Controls: React.FC = () => {
     switch (gameState) {
       case 'PLAYER_RAID':
         // This variable declaration was missing
-        const showBonus = hasCrossedBaulkLine && defenderCount >= 6;
+        const showBonus =  defenderCount >= 6;
         
         return (
           <div className="flex flex-wrap items-center justify-center gap-4">
