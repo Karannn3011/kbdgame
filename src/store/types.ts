@@ -83,8 +83,8 @@ export interface RaidSlice {
   _resolveBonus: (raiderId: string) => void; // <-- ADD
   _triggerQTE: (qte: GameStoreState['activeQTE']) => void; // <-- UPDATED
   handleQTEOutcome: (success: boolean) => void;
-  _handleQTEPlayerSuccess: () => void;
-  _handleQTEPlayerFailure: () => void;
+  _handleQTEPlayerSuccess: (context : QTEContext |undefined) => void;
+  _handleQTEPlayerFailure: (context : QTEContext |undefined) => void;
   feint: (direction: 'up' | 'down') => void;
   _updateRaiderPosition: (targetLane: 'top' | 'center' | 'bottom') => void;
   _setRaiderPostRaidPosition: () => void;

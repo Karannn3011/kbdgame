@@ -424,52 +424,49 @@ export const createRaidSlice: StateCreator<
     }
   },
 
+
   // ... (inside createRaidSlice)
 
   handleQTEOutcome: (success) => {
     const raiderId = get().currentRaiderId!;
     const isPlayerRaider = get().playerTeam.some(p => p.id === raiderId);
-    
-    // Get the context *before* nullifying the QTE
-    const qteContext = get().activeQTE?.context;
+    const qteContext = get().activeQTE?.context; // 1. Get context *before* nulling
 
-    // --- LOGIC CORRECTION ---
-    // Only resume timers if the raid isn't over (e.g., success in a tackle)
-    if (success) {
-      if (qteContext === 'tackle' || qteContext === 'bonus_tackle' || qteContext === 'multi_tackle') {
+    // 2. Restart timers ONLY if the RAIDER succeeded at an escape
+    if (success && isPlayerRaider) {
+      if (qteContext === 'tackle' || qteContext === 'multi_tackle' || qteContext === 'bonus_tackle') {
         get()._startStaminaDrain();
         get()._startRaidTimer();
       }
     }
-    // --- END CORRECTION ---
     
-    set({ activeQTE: null });
+    set({ activeQTE: null }); // 3. Set to null
     
-    // Change state *after* nullifying QTE
+    // 4. Set state *after* nulling
     get()._addLog(`Game state changed to: ${isPlayerRaider ? 'PLAYER_RAID' : 'AI_RAID'}`);
     get()._changeGameState(isPlayerRaider ? 'PLAYER_RAID' : 'AI_RAID');
 
+    // 5. Pass the context as an argument
     if (success) {
-      get()._handleQTEPlayerSuccess();
+      get()._handleQTEPlayerSuccess(qteContext); 
     } else {
-      get()._handleQTEPlayerFailure();
+      get()._handleQTEPlayerFailure(qteContext);
     }
   },
 
-  _handleQTEPlayerSuccess: () => {
+  _handleQTEPlayerSuccess: (context) => { // <-- 1. RECEIVE context as argument
     get()._addLog('QTE Success!');
     const raiderId = get().currentRaiderId!;
     const points = get().pointsScoredThisRaid;
-    const context = get().activeQTE?.context; // Get context
+    // const context = get().activeQTE?.context; // <-- 2. REMOVE this line
     const isPlayerRaider = get().playerTeam.some(p => p.id === raiderId);
 
-    switch (context) {
+    switch (context) { // 3. This switch will now work correctly
       case 'tackle':
       case 'multi_tackle':
         // This logic handles both player and AI raiders
         if (isPlayerRaider) {
           // --- PLAYER IS RAIDER (Mash QTE) ---
-          // Check for Do-or-Die fail
           if (get().isDoOrDie && get().pointsScoredThisRaid === 0) {
             get()._addLog('Player broke free, but failed the Do-or-Die raid!');
             get()._handlePlayerOut(raiderId, 'Failed Do-or-Die');
@@ -479,21 +476,17 @@ export const createRaidSlice: StateCreator<
           
           get()._addLog('Player broke free from the tackle!');
 
-          // --- MULTI-KILL LOGIC ---
           const multiKillCount = get().multiKillCount;
-          // 30% chance for a 2nd tackle, 15% for a 3rd
           const probability = multiKillCount === 1 ? 0.3 : 0.15; 
           
           if (multiKillCount < 3 && Math.random() < probability) {
             get()._addLog('Another defender approaches!');
-            // Trigger a harder QTE
             get()._triggerQTE({
               type: 'mash',
               context: 'multi_tackle',
-              target: 12 + (multiKillCount * 3) // Gets harder
+              target: 12 + (multiKillCount * 3)
             });
           } else {
-            // No multi-kill, must retreat
             set({ mustRetreat: true });
           }
 
@@ -510,23 +503,23 @@ export const createRaidSlice: StateCreator<
         set((state) => ({
           pointsScoredThisRaid: state.pointsScoredThisRaid + 1,
         }));
-        get().handleRaidAction('RETREAT'); // Auto-retreat after bonus
+        get().handleRaidAction('RETREAT');
         break;
 
       case 'retreat_escape':
         get()._addLog('Player escaped the block and is safe!');
-        get()._endRaid(raiderId, points, true); // Raid ends successfully
+        get()._endRaid(raiderId, points, true);
         break;
     }
   },
 
-  _handleQTEPlayerFailure: () => {
+  _handleQTEPlayerFailure: (context) => { // <-- 1. RECEIVE context as argument
     get()._addLog('QTE Failed!');
     const raiderId = get().currentRaiderId!;
-    const context = get().activeQTE?.context;
+    // const context = get().activeQTE?.context; // <-- 2. REMOVE this line
     const isPlayerRaider = get().playerTeam.some(p => p.id === raiderId);
 
-    // If you fail an escape (retreat or bonus), the raider is out.
+    // 3. This logic will now work correctly
     if (context === 'retreat_escape' || context === 'bonus_tackle') {
       get()._addLog('Player was caught! Raider is out.');
       if (isPlayerRaider) {
@@ -534,9 +527,8 @@ export const createRaidSlice: StateCreator<
       } else {
         get()._handleAIOut(raiderId, 'Caught by player');
       }
-      get()._endRaid(raiderId, 0, false); // Failed raid
+      get()._endRaid(raiderId, 0, false);
     } 
-    // If you fail a tackle (as raider or defender)
     else if (context === 'tackle' || context === 'multi_tackle') {
       if (isPlayerRaider) {
         // --- PLAYER IS RAIDER (Mash QTE) ---
@@ -546,7 +538,7 @@ export const createRaidSlice: StateCreator<
       } else {
         // --- PLAYER IS DEFENDER (Timing QTE) ---
         get()._addLog('Player failed the tackle! AI scores.');
-        const defender = get().playerTeam.find(p => !p.isOut); // Just finds one
+        const defender = get().playerTeam.find(p => !p.isOut);
         if (defender) {
           get()._handlePlayerOut(defender.id, 'Failed tackle');
         }
@@ -554,7 +546,7 @@ export const createRaidSlice: StateCreator<
           pointsScoredThisRaid: state.pointsScoredThisRaid + 1,
           multiKillCount: state.multiKillCount + 1
         }));
-        get()._endRaid(raiderId, get().pointsScoredThisRaid, true); // AI retreats safely
+        get()._endRaid(raiderId, get().pointsScoredThisRaid, true);
       }
     }
   },
