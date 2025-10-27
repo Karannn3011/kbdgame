@@ -42,11 +42,63 @@ const Controls: React.FC = () => {
   );
   // --- End of missing hooks ---
 
+  const resolveMultiKill = useGameStore((state) => state.resolveMultiKill);
+
   const renderControls = () => {
     switch (gameState) {
-      case 'PLAYER_RAID':
+      case "RAID_DECISION":
+        return (
+          <div className="flex flex-col items-center justify-center gap-4 p-4 bg-gray-800 rounded-lg shadow-lg">
+            <div className="text-xl font-bold text-yellow-400">
+              Opportunity! Go for another point?
+            </div>
+            <div className="flex gap-4">
+              <Button onClick={() => resolveMultiKill("press")} color="red">
+                Press the Attack!
+              </Button>
+              <Button onClick={() => resolveMultiKill("retreat")} color="gray">
+                Retreat Safely
+              </Button>
+            </div>
+          </div>
+        );
+      case "PLAYER_RAID":
+        const showBonus = defenderCount >= 6;
+        return (
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            {/* Feint Buttons */}
+            <Button
+              onClick={() => feint("up")}
+              disabled={raiderLane === "top"}
+              color="gray"
+            >
+              Feint Up
+            </Button>
+            <Button
+              onClick={() => feint("down")}
+              disabled={raiderLane === "bottom"}
+              color="gray"
+            >
+              Feint Down
+            </Button>
+
+            {/* Bonus Button */}
+            {showBonus && (
+              <Button onClick={() => handleRaidAction("BONUS")} color="blue">
+                Attempt Bonus
+              </Button>
+            )}
+
+            {/* Retreat Button */}
+            <Button onClick={() => handleRaidAction("RETREAT")} color="red">
+              {mustRetreat ? "RETREAT (Must)" : "RETREAT"}
+            </Button>
+            
+            {/* 'TOUCH' BUTTON IS NOW REMOVED */}
+          </div>
+        );
         // This variable declaration was missing
-        const showBonus =  defenderCount >= 6;
+        
         
         return (
           <div className="flex flex-wrap items-center justify-center gap-4">
