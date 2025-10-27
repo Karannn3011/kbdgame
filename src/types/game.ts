@@ -5,6 +5,7 @@ export type GameState =
   | 'PRE_GAME'       // [cite: 18]
   | 'SELECT_RAIDER'  // [cite: 19]
   | 'PLAYER_RAID'    // [cite: 20]
+  | "RAID_DECISION"
   | 'AI_RAID'        // [cite: 21]
   | 'QTE_ACTIVE'     // [cite: 22]
   | 'RAID_END'       // [cite: 23]

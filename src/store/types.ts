@@ -4,12 +4,16 @@ import { GameState, QTE, LogEntry } from '../types/game';
 import { Player } from '../types/player';
 
 
-export type QTEContext = 
-  | 'tackle_score'     // <-- NEW: Offensive timing QTE
-  | 'tackle_escape'    // <-- NEW: Defensive mash QTE
-  | 'multi_tackle'     // Follow-up for a multi-point raid
-  | 'bonus_tackle'     // Tackle during a bonus attempt
-  | 'retreat_escape';  // Escape while retreating
+export type QTEContext =
+  | "feint_struggle" // Player feinted and baited a defender
+  | "bonus_struggle" // Player attempted bonus and was caught
+  | "multi_struggle_2" // Player is pressing for a 2nd point
+  | "multi_struggle_3" // Player is pressing for a 3rd point
+  | "retreat_escape" // Player was caught while retreating
+  // AI-specific contexts (unchanged)
+  | "tackle_score"
+  | "tackle_escape"
+  | "multi_tackle";
 // 1. All STATE properties
 export interface GameStoreState {
   // Game Flow State
@@ -39,11 +43,11 @@ export interface GameStoreState {
   multiKillCount: number; // <-- ADD
 
   // QTE State
-  activeQTE: { // <-- REPLACE with this object
-    type: 'mash' | 'timing';
-    defenderId?: string | null;
+  activeQTE: {
+    type: "mash" | "timing";
     context: QTEContext;
-    target?: number;
+    defenderId?: string | null; // The defender who was baited
+    mashTarget?: number; // For the random mash goal
     successZone?: number;
   } | null;
 }
@@ -89,6 +93,7 @@ export interface RaidSlice {
   feint: (direction: 'up' | 'down') => void;
   _updateRaiderPosition: (targetLane: 'top' | 'center' | 'bottom') => void;
   _setRaiderPostRaidPosition: () => void;
+  resolveMultiKill: (decision: "press" | "retreat") => void; // <-- NEW
 }
 
 // 3. Combined Types

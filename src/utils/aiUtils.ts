@@ -101,3 +101,33 @@ export const chooseAIAction = (
   // It will feint 60% of the time, touch 40% of the time.
   return Math.random() < 0.6 ? "FEINT" : "TOUCH";
 };
+
+export const getBaitedDefender = (get: () => GameStoreState): Player | null => {
+  const { playerTeam, aiTeam, raiderLane, currentRaiderId } = get();
+  const raider = playerTeam.find((p) => p.id === currentRaiderId);
+  if (!raider) return null;
+
+  const availableDefenders = aiTeam.filter((p) => !p.isOut);
+
+  for (const defender of availableDefenders) {
+    // 1. Check Proximity (is defender in the same lane?)
+    let proximity = 0;
+    const defY = defender.position.y;
+    if (raiderLane === "top" && defY < 40) proximity = 1;
+    else if (raiderLane === "center" && defY >= 40 && defY <= 60) proximity = 1;
+    else if (raiderLane === "bottom" && defY > 60) proximity = 1;
+    
+    if (proximity === 0) continue; // Not in the same lane, can't be baited
+
+    // 2. Calculate Bait Probability (dynamic)
+    // Base 10% chance, +1% for every point raider AGI > defender REF
+    const statDifference = raider.stats.agi - defender.stats.ref;
+    const baitProbability = 0.1 + Math.max(0, statDifference * 0.01);
+
+    if (Math.random() < baitProbability) {
+      return defender; // This defender was baited!
+    }
+  }
+
+  return null; // No one was baited
+};

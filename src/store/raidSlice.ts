@@ -7,6 +7,7 @@ import {
   selectAIRaider,
   selectAITarget,
   chooseAIAction,
+  getBaitedDefender
 } from "../utils/aiUtils";
 
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -49,34 +50,35 @@ export const createRaidSlice: StateCreator<
     const raider = selectAIRaider(get().aiTeam);
     if (!raider) return;
 
-    const updatedAITeam = get().aiTeam.map(
-      (p) => (p.id === raider.id ? { ...p, position: { x: 90, y: 50 } } : p) // <-- CHANGED
+    // This part had a bug, it wasn't using the 'updatedAITeam'
+    const updatedAITeam = get().aiTeam.map((p) =>
+      p.id === raider.id ? { ...p, position: { x: 90, y: 50 } } : p
     );
 
     set({
       currentRaiderId: raider.id,
       pointsScoredThisRaid: 0,
-      aiTeam: get().aiTeam.map((p) =>
-        p.id === raider.id ? { ...p, position: { x: 90, y: 50 } } : p
-      ),
+      aiTeam: updatedAITeam, // <-- FIX: Use the updated team
       raiderLane: "center",
       raidTimer: 30,
       multiKillCount: 0,
       activeQTE: null,
     });
-    get()._addLog(`AI raid started with ${raider.id}.`); // <-- This will now work
+    get()._addLog(`AI raid started with ${raider.id}.`);
     get()._startStaminaDrain();
-    get()._startRaidTimer(); // <-- START 30s CLOCK
+    get()._startRaidTimer();
 
     // Start the AI "Brain" loop
-    get()._aiTick(); // <-- CALL AI TICK
+    get()._aiTick(); // <-- This is correct
 
-    const target = get().playerTeam.find((p) => !p.isOut);
-    if (target) {
-      get().handleRaidAction("TOUCH", target.id); // <-- This will now work
-    } else {
-      get().handleRaidAction("RETREAT"); // <-- This will now work
-    }
+    // --- BUG 2 FIX: REMOVE THE OLD PLACEHOLDER LOGIC ---
+    // const target = get().playerTeam.find((p) => !p.isOut);
+    // if (target) {
+    //   get().handleRaidAction("TOUCH", target.id);
+    // } else {
+    //   get().handleRaidAction("RETREAT");
+    // }
+    // --- END FIX ---
   },
 
   _aiTick: () => {
@@ -253,6 +255,18 @@ export const createRaidSlice: StateCreator<
 
     // 3. Trigger defender formation change
     get()._updateDefenderFormations(targetLane);
+    const baitedDefender = getBaitedDefender(get);
+    if (baitedDefender) {
+      get()._addLog(
+        `Defender ${baitedDefender.id} takes the bait and lunges for a tackle!`,
+      );
+      get()._triggerQTE({
+        type: "mash",
+        context: "feint_struggle",
+        defenderId: baitedDefender.id,
+        mashTarget: Math.floor(Math.random() * 5) + 8, // Random: 8-12 mashes
+      });
+    }
   },
 
   _startStaminaDrain: () => {
@@ -328,24 +342,61 @@ export const createRaidSlice: StateCreator<
 
   _resolveBonus: (raiderId) => {
     get()._addLog(`${raiderId} dives for the bonus point!`);
-    const isPlayerRaider = get().playerTeam.some((p) => p.id === raiderId);
+    const baitedDefender = getBaitedDefender(get); // Check for bait
 
-    // 50% chance to be "tackled" during a bonus attempt
-    if (Math.random() < 0.5) {
+    // 40% chance to be baited *even if* no defender is in the lane
+    if (baitedDefender || Math.random() < 0.4) {
       get()._addLog("The defense converges!");
       get()._triggerQTE({
-        type: isPlayerRaider ? "timing" : "mash", // Escape QTE
-        context: "bonus_tackle", // <-- Bonus context
-        target: 15, // Harder
-        successZone: 0.3, // Harder
+        type: "mash",
+        context: "bonus_struggle",
+        defenderId: baitedDefender?.id,
+        mashTarget: Math.floor(Math.random() * 5) + 12, // Harder: 12-16
       });
     } else {
-      // Bonus success
       get()._addLog("Bonus point scored!");
       set((state) => ({
         pointsScoredThisRaid: state.pointsScoredThisRaid + 1,
+        mustRetreat: true,
       }));
-      get().handleRaidAction("RETREAT"); // Auto-retreat
+    }
+  },
+
+  resolveMultiKill: (decision) => {
+    if (get().gameState !== "RAID_DECISION") return;
+
+    if (decision === "retreat") {
+      get()._addLog("Raider plays it safe and retreats.");
+      set({ mustRetreat: true });
+      get()._changeGameState("PLAYER_RAID");
+    } else if (decision === "press") {
+      const { multiKillCount } = get();
+      get()._addLog("Raider goes for another!");
+
+      // Find a new target (closest available defender)
+      const raider = get().playerTeam.find(p => p.id === get().currentRaiderId)!;
+      const defenders = get().aiTeam.filter(p => !p.isOut);
+      const target = defenders.sort((a, b) => 
+        Math.abs(a.position.y - raider.position.y) - Math.abs(b.position.y - raider.position.y)
+      )[0];
+
+      if (!target) {
+        get()._addLog("No defenders left to target!");
+        set({ mustRetreat: true });
+        get()._changeGameState("PLAYER_RAID");
+        return;
+      }
+
+      get()._addLog(`[${target.id}] moves in to block!`);
+      const newContext = multiKillCount === 1 ? "multi_struggle_2" : "multi_struggle_3";
+      
+      // This can be any QTE. Let's make it a hard timing one.
+      get()._triggerQTE({
+        type: "timing",
+        context: newContext,
+        defenderId: target.id,
+        successZone: 0.2, // Very small window
+      });
     }
   },
 
@@ -393,10 +444,14 @@ export const createRaidSlice: StateCreator<
     const raiderId = get().currentRaiderId;
     if (!raiderId) return;
 
-    if (action === "TOUCH") {
-      if (!targetId) return;
-      get()._addLog(`${raiderId} attempts a touch on ${targetId}.`);
-      get()._resolveTackle(raiderId, targetId);
+    if (get().gameState === "AI_RAID") {
+      if (action === "TOUCH") {
+        get()._addLog(`${raiderId} attempts a touch on ${targetId}.`);
+        get()._resolveTackle(raiderId, targetId!);
+      }
+      if (action === "RETREAT") get()._resolveRetreat(raiderId);
+      if (action === "BONUS") get()._resolveBonus(raiderId);
+      return;
     }
 
     if (action === "RETREAT") {
@@ -444,16 +499,12 @@ export const createRaidSlice: StateCreator<
   },
 
   _handleQTEPlayerSuccess: (context, defenderId) => {
-    // <-- 1. RECEIVE context as argument
     get()._addLog("QTE Success!");
     const raiderId = get().currentRaiderId!;
     const points = get().pointsScoredThisRaid;
-    // const context = get().activeQTE?.context; // <-- 2. REMOVE this line
     const isPlayerRaider = get().playerTeam.some((p) => p.id === raiderId);
 
-    switch (
-      context // 3. This switch will now work correctly
-    ) {
+    switch (context) {
       case "tackle_score":
         // --- Offensive Timing QTE Success ---
         get()._addLog("Touch successful! Defender is out.");
@@ -466,71 +517,64 @@ export const createRaidSlice: StateCreator<
           multiKillCount: state.multiKillCount + 1,
         }));
 
-        // --- CHECK FOR MULTI-KILL ---
+        // --- CHECK FOR MULTI-KILL (Only for player) ---
         const multiKillCount = get().multiKillCount;
         const probability = multiKillCount === 1 ? 0.3 : 0.15;
 
-        if (multiKillCount < 3 && Math.random() < probability) {
+        if (isPlayerRaider && multiKillCount < 3 && Math.random() < probability) {
           get()._addLog("Another defender approaches!");
           get()._triggerQTE({
             type: "mash",
-            context: "multi_tackle", // This is still a defensive QTE
+            context: "multi_tackle",
             target: 12 + multiKillCount * 3,
           });
         } else {
+          // No multi-kill. Must retreat.
           set({ mustRetreat: true });
+          
+          // --- BUG 1 FIX: Restart AI brain ---
+          if (!isPlayerRaider) {
+            setTimeout(get()._aiTick, 1000); // AI needs to tick again to see 'mustRetreat'
+          }
+          // --- END FIX ---
         }
         break;
 
       case "tackle_escape":
-        // --- Defensive Mash QTE Success ---
-        get()._addLog("Player broke free from the tackle!");
-        // Check Do-or-Die
+        // --- Defensive Mash/Timing QTE Success (Raider Escaped) ---
+        get()._addLog("Raider broke free from the tackle!");
         if (get().isDoOrDie && get().pointsScoredThisRaid === 0) {
           get()._addLog("...but failed the Do-or-Die raid!");
-          get()._handlePlayerOut(raiderId, "Failed Do-or-Die");
+          if (isPlayerRaider) get()._handlePlayerOut(raiderId, "Failed Do-or-Die");
+          else get()._handleAIOut(raiderId, "Failed Do-or-Die"); // Handle AI Do-or-Die fail
           get()._endRaid(raiderId, 0, false);
           return;
         }
-        // Raid continues, no points scored.
+        
+        // Raid continues. Restart timers and AI tick.
+        get()._startStaminaDrain();
+        get()._startRaidTimer();
+        if (!isPlayerRaider) {
+          setTimeout(get()._aiTick, 1000);
+        }
         break;
 
       case "multi_tackle":
+        // --- BUG 3 FIX: Corrected Logic ---
         // This is a defensive escape, same as tackle_escape
-        get()._addLog("Player broke free from the multi-tackle!");
+        get()._addLog("Raider broke free from the multi-tackle!");
         // Multi-kill chain is broken. Must retreat.
         set({ mustRetreat: true });
-        // This logic handles both player and AI raiders
-        if (isPlayerRaider) {
-          // --- PLAYER IS RAIDER (Mash QTE) ---
-          if (get().isDoOrDie && get().pointsScoredThisRaid === 0) {
-            get()._addLog("Player broke free, but failed the Do-or-Die raid!");
-            get()._handlePlayerOut(raiderId, "Failed Do-or-Die");
-            get()._endRaid(raiderId, 0, false);
-            return;
-          }
-
-          get()._addLog("Player broke free from the tackle!");
-
-          const multiKillCount = get().multiKillCount;
-          const probability = multiKillCount === 1 ? 0.3 : 0.15;
-
-          if (multiKillCount < 3 && Math.random() < probability) {
-            get()._addLog("Another defender approaches!");
-            get()._triggerQTE({
-              type: "mash",
-              context: "multi_tackle",
-              target: 12 + multiKillCount * 3,
-            });
-          } else {
-            set({ mustRetreat: true });
-          }
-        } else {
-          // --- PLAYER IS DEFENDER (Timing QTE) ---
-          get()._addLog("Player successfully tackled the AI raider!");
-          get()._handleAIOut(raiderId, "Tackled by player");
-          get()._endRaid(raiderId, 0, false);
+        
+        // Raid continues briefly. Restart timers.
+        get()._startStaminaDrain();
+        get()._startRaidTimer();
+        
+        // If AI was raider, resume its tick (it will see 'mustRetreat' and leave)
+        if (!isPlayerRaider) {
+          setTimeout(get()._aiTick, 1000);
         }
+        // --- END FIX ---
         break;
 
       case "bonus_tackle":
@@ -538,21 +582,19 @@ export const createRaidSlice: StateCreator<
         set((state) => ({
           pointsScoredThisRaid: state.pointsScoredThisRaid + 1,
         }));
-        get().handleRaidAction("RETREAT");
+        get().handleRaidAction("RETREAT"); // Auto-retreat after successful bonus
         break;
 
       case "retreat_escape":
         get()._addLog("Player escaped the block and is safe!");
-        get()._endRaid(raiderId, points, true);
+        get()._endRaid(raiderId, points, true); // Raid ends successfully
         break;
     }
   },
 
   _handleQTEPlayerFailure: (context, defenderId) => {
-    // <-- 1. RECEIVE context as argument
     get()._addLog("QTE Failed!");
     const raiderId = get().currentRaiderId!;
-    // const context = get().activeQTE?.context; // <-- 2. REMOVE this line
     const isPlayerRaider = get().playerTeam.some((p) => p.id === raiderId);
 
     switch (context) {
@@ -560,7 +602,13 @@ export const createRaidSlice: StateCreator<
         // --- Offensive Timing QTE Failure ---
         get()._addLog("Touch blocked by the defender!");
         // Raid continues, no one is out.
-        // We could add a small stamina penalty here later.
+        // We need to restart the timers and the AI tick
+        get()._startStaminaDrain();
+        get()._startRaidTimer();
+        if (!isPlayerRaider) {
+          // If AI failed, resume its brain
+          setTimeout(get()._aiTick, 1000);
+        }
         break;
 
       case "tackle_escape":
@@ -568,14 +616,20 @@ export const createRaidSlice: StateCreator<
         // --- Defensive Mash QTE Failure ---
         get()._addLog("Player was tackled! Raider is out.");
         if (isPlayerRaider) get()._handlePlayerOut(raiderId, "Tackled");
-        else get()._handleAIOut(raiderId, "Tackled");
+        else get()._handleAIOut(raiderId, "Tackled by player");
         get()._endRaid(raiderId, 0, false);
         break;
 
       case "bonus_tackle":
       case "retreat_escape":
-        get()._addLog("Player escaped the block and is safe!");
-        get()._endRaid(raiderId, points, true);
+        // --- Escape QTE Failure ---
+        get()._addLog("Player was caught! Raider is out.");
+        if (isPlayerRaider) {
+          get()._handlePlayerOut(raiderId, "Caught on bonus/retreat");
+        } else {
+          get()._handleAIOut(raiderId, "Caught by player");
+        }
+        get()._endRaid(raiderId, 0, false); // Failed raid
         break;
     }
   },
